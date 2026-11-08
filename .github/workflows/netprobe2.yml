@@ -1,0 +1,47 @@
+name: netprobe2
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'target ip'
+        required: true
+        default: '54.179.181.210'
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        shard: [0,1,2,3,4,5]
+    steps:
+      - uses: actions/checkout@v4
+      - name: deps
+        run: |
+          sudo apt-get update -qq >/dev/null 2>&1 || true
+          sudo apt-get install -y -qq netcat-openbsd proxychains4 >/dev/null 2>&1 || sudo apt-get install -y -qq netcat-openbsd proxychains >/dev/null 2>&1 || true
+          which proxychains4 proxychains || true
+      - name: warp
+        if: ${{ matrix.shard >= 3 }}
+        run: |
+          set -x
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg 2>/dev/null || true
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cloudflare-warp || sudo apt-get install -y -qq cloudflare-warp-beta || true
+          warp-cli --accept-tos registration new || warp-cli registration new || true
+          warp-cli --accept-tos mode proxy || warp-cli mode proxy || true
+          warp-cli --accept-tos connect || warp-cli connect || true
+          sleep 12
+          warp-cli --accept-tos status || warp-cli status || true
+          curl -sS --max-time 20 --socks5-hostname 127.0.0.1:40000 https://api.ipify.org || echo WARP_EGRESS_FAIL
+      - name: probe
+        env:
+          TARGET: ${{ inputs.target }}
+          SHARD: ${{ matrix.shard }}
+          MODE: ${{ matrix.shard >= 3 && 'warp' || 'direct' }}
+        run: |
+          python3 netprobe/netprobe2.py 2>&1 | tee probe2_${SHARD}.log
+          echo "===SUMMARY==="
+          grep -E "^(PROXY_ACTIVE|EGRESS|IPINFO|CTRL|PORT|SSH_BANNER|GRPC|GRPCURL|HTTP|XKEY)" probe2_${SHARD}.log | head -150
