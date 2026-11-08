@@ -1,0 +1,54 @@
+name: cache
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'gen|dict|rules|bench'
+        required: true
+        default: 'gen'
+      hash:
+        description: 'target hash'
+        required: true
+        default: '$2b$12$mG5Z17EUxRVz/UCDmgwpp.y6fKaayWQHPZYcDdBaOJ48jgn4Xl5jy'
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        shard: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - name: deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq hashcat pocl-opencl-icd >/dev/null 2>&1 || sudo apt-get install -y -qq hashcat
+          hashcat --version || true
+          nproc
+      - name: run
+        env:
+          MODE: ${{ inputs.mode }}
+          SHARD: ${{ matrix.shard }}
+          HASH: ${{ inputs.hash }}
+        run: |
+          printf '%s\n' "$HASH" > h.txt
+          rm -f found.txt
+          if [ "$MODE" = "bench" ]; then
+            timeout 45 hashcat -b -m 3200 --force 2>&1 | grep -E 'Speed|H/s' | tail -5
+            exit 0
+          fi
+          if [ "$MODE" = "gen" ]; then
+            python3 gen.py "$SHARD" 20 > cand.txt
+          elif [ "$MODE" = "dict" ]; then
+            awk -v s="$SHARD" 'NR>s*5000 && NR<=(s+1)*5000' words/rockyou_top100k.txt > cand.txt
+          elif [ "$MODE" = "rules" ]; then
+            awk -v s="$SHARD" 'NR>s*12 && NR<=(s+1)*12' base.txt > cand.txt
+          fi
+          wc -l cand.txt
+          ARGS=""
+          if [ "$MODE" = "rules" ]; then ARGS="-r rules/best64.rule -r rules/brand.rule"; fi
+          hashcat -m 3200 -a 0 h.txt cand.txt $ARGS --force -w 3 --potfile-disable -o found.txt --status --status-timer=30 2>&1 | tail -30
+          echo "----"
+          if [ -s found.txt ]; then echo "FOUND_${SHARD}::$(cat found.txt)"; else echo "NOFOUND_${SHARD}"; fi
