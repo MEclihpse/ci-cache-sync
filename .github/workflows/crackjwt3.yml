@@ -1,0 +1,41 @@
+name: jwtspecial
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'crack profile'
+        required: true
+        default: '3'
+      threads:
+        description: 'threads per runner'
+        required: true
+        default: '4'
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        shard: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libssl-dev gcc >/dev/null 2>&1 || true
+          gcc -O3 -pthread -o crack3 crack3.c -lcrypto
+      - name: run
+        env:
+          SHARD: ${{ matrix.shard }}
+          PROFILE: ${{ inputs.profile }}
+          THREADS: ${{ inputs.threads }}
+        run: |
+          n=$(printf '%02d' "$SHARD")
+          gunzip -c "words/sp.${n}.gz" > w.txt
+          wc -l w.txt
+          rm -f FOUND_SECRET.txt
+          ./crack3 target.jwt w.txt "$THREADS" "$PROFILE" || true
+          echo "----"
+          if [ -s FOUND_SECRET.txt ]; then echo "FOUND_${SHARD}::$(cat FOUND_SECRET.txt)"; else echo "NOFOUND_${SHARD}"; fi
