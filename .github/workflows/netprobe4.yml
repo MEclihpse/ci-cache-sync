@@ -1,0 +1,28 @@
+name: netprobe4
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'tls origin ip'
+        required: true
+        default: '52.77.54.246'
+jobs:
+  vhost:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        shard: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - name: probe
+        env:
+          THOST: ${{ inputs.target }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set +e
+          python3 netprobe/netprobe4.py 2>&1 | tee probe4_${SHARD}.log
+          echo "===SUMMARY==="
+          grep -aE "^(EGRESS|IPINFO|CTRL|PORT|VHOST|PATH|SNI|HTTP80|OTHER)" probe4_${SHARD}.log | head -80
