@@ -173,6 +173,17 @@ static void process_word(char *w, int len, long long *cnt) {
             if (done) return;
         }
     }
+    if (g_profile >= 3) {
+        for (int d = 0; d < 10000; d++) {
+            n = snprintf(b, sizeof b, "%s%04d", ws, d); try_cand(b, n, cnt);
+            if (done) return;
+        }
+        for (int d = 0; d < 1000; d++) {
+            n = snprintf(b, sizeof b, "%s!%03d", ws, d); try_cand(b, n, cnt);
+            n = snprintf(b, sizeof b, "%s@%03d", ws, d); try_cand(b, n, cnt);
+            if (done) return;
+        }
+    }
 }
 
 typedef struct { char *s, *e; } range_t;
