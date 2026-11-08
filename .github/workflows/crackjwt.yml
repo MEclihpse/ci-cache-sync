@@ -40,3 +40,5 @@ jobs:
           ./crack3 target.jwt w.txt "$THREADS" "$PROFILE" || true
           echo "----"
           if [ -s FOUND_SECRET.txt ]; then echo "FOUND_${SHARD}::$(cat FOUND_SECRET.txt)"; else echo "NOFOUND_${SHARD}"; fi
+
+# touch 2026-11-08a
