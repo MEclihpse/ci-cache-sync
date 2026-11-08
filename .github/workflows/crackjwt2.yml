@@ -1,0 +1,40 @@
+name: jwthc
+on:
+  workflow_dispatch:
+    inputs:
+      per:
+        description: 'words per shard'
+        required: true
+        default: '50000'
+      rule:
+        description: 'rule file'
+        required: true
+        default: '/usr/share/hashcat/rules/rockyou-30000.rule'
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        shard: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - name: deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq hashcat pocl-opencl-icd >/dev/null 2>&1 || sudo apt-get install -y -qq hashcat >/dev/null 2>&1
+          hashcat --version || true
+          nproc
+      - name: run
+        env:
+          SHARD: ${{ matrix.shard }}
+          PER: ${{ inputs.per }}
+          RULE: ${{ inputs.rule }}
+        run: |
+          awk -v s="$SHARD" -v n="$PER" 'NR>s*n && NR<=(s+1)*n' words/rockyou_top1M.txt > w.txt
+          wc -l w.txt
+          hashcat -m 16500 -a 0 -r "$RULE" target.jwt w.txt --force -w 3 --potfile-disable -o "found_${SHARD}.txt" --status --status-timer=60 2>&1 | tail -25
+          echo "----"
+          if [ -s "found_${SHARD}.txt" ]; then echo "FOUND_${SHARD}::$(head -c 300 found_${SHARD}.txt)"; else echo "NOFOUND_${SHARD}"; fi
