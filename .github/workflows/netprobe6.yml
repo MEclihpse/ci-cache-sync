@@ -1,0 +1,27 @@
+name: netprobe6
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'tls origin ip'
+        required: true
+        default: '52.77.54.246'
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        shard: [0,1]
+    steps:
+      - uses: actions/checkout@v4
+      - name: scan
+        env:
+          THOST: ${{ inputs.target }}
+        run: |
+          set +e
+          python3 netprobe/netprobe6.py 2>&1 | tee scan_${SHARD}.log
+          echo "===SUMMARY==="
+          grep -aE "^(EGRESS|OPEN|REFUSED|BANNER|===)" scan_${SHARD}.log | head -60
