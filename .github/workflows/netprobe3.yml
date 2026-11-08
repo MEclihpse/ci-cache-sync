@@ -36,6 +36,7 @@ jobs:
         env:
           TARGET: ${{ inputs.target }}
         run: |
+          set +e
           S="--socks5-hostname 127.0.0.1:40000"
           echo "WARP_EGRESS $(curl -sS --max-time 25 $S https://api.ipify.org || echo FAIL)"
           echo "WARP_IPINFO $(curl -sS --max-time 25 $S https://ipinfo.io/json | tr -d '\n' | head -c 400)"
