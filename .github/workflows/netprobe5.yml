@@ -1,0 +1,38 @@
+name: netprobe5
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'staging ip'
+        required: true
+        default: '54.179.181.210'
+jobs:
+  warp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: warp
+        run: |
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg 2>/dev/null || true
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list >/dev/null
+          sudo apt-get update -qq >/dev/null 2>&1
+          sudo apt-get install -y -qq cloudflare-warp >/dev/null 2>&1 || true
+          warp-cli --accept-tos registration new || warp-cli registration new || true
+          warp-cli --accept-tos mode proxy || warp-cli mode proxy || true
+          warp-cli --accept-tos connect || warp-cli connect || true
+          sleep 15
+          warp-cli --accept-tos status || warp-cli status || true
+      - name: probe
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          set +e
+          S="--socks5-hostname 127.0.0.1:40000"
+          echo "WARP_EGRESS $(curl -sS --max-time 25 $S https://api.ipify.org || echo FAIL)"
+          echo "WARP_IPINFO $(curl -sS --max-time 25 $S https://ipinfo.io/json | tr -d '\n' | head -c 300)"
+          echo "WARP_CTRL_PREDICT $(curl -sS --max-time 20 $S -o /dev/null -w '%{http_code}' https://predict.aifos.info/ || echo FAIL)"
+          for p in 22 80 443 8000 8080 9000 50051 5432 6379; do
+            out=$(curl -sS --max-time 15 $S -o /tmp/p_$p -w "%{http_code}" "http://$TARGET:$p/" 2>/tmp/e_$p); rc=$?
+            echo "WARPPORT $p rc=$rc code=$out err=[$(head -c 100 /tmp/e_$p | tr -d '\n')] body=[$(head -c 160 /tmp/p_$p 2>/dev/null | tr -d '\r\n')]"
+          done
+          echo "WARP_ALLDONE"
