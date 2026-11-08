@@ -1,0 +1,46 @@
+name: build
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: 'word file'
+        required: true
+        default: 'words/rockyou_top1M.txt'
+      per:
+        description: 'lines per shard'
+        required: true
+        default: '50000'
+      hash:
+        description: 'target hash'
+        required: true
+        default: '$2b$12$mG5Z17EUxRVz/UCDmgwpp.y6fKaayWQHPZYcDdBaOJ48jgn4Xl5jy'
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        shard: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - name: deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq hashcat >/dev/null 2>&1
+          nproc
+      - name: run
+        env:
+          FILE: ${{ inputs.file }}
+          PER: ${{ inputs.per }}
+          SHARD: ${{ matrix.shard }}
+          HASH: ${{ inputs.hash }}
+        run: |
+          printf '%s\n' "$HASH" > h.txt
+          rm -f found.txt
+          awk -v s="$SHARD" -v n="$PER" 'NR>s*n && NR<=(s+1)*n' "$FILE" > cand.txt
+          wc -l cand.txt
+          hashcat -m 3200 -a 0 h.txt cand.txt --force -w 3 --potfile-disable -o found.txt --status --status-timer=60 2>&1 | tail -20
+          echo "----"
+          if [ -s found.txt ]; then echo "FOUND_${SHARD}::$(cat found.txt)"; else echo "NOFOUND_${SHARD}"; fi
